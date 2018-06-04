@@ -8,49 +8,56 @@
 #include "FileBuffer.h"
 
 #define NUM_THREADS	4
+#define SIZE_OF_BUFF 5
+FileDeq *fileDeq;
+void writeToFile(FileBuff *buff,void *args)
+{
+    printf("writing\n");
+    fprintf(buff->filePtr,"/Hello world! %s\n",(char*)args);
+}
+void *threadFunction(void *args)
+{
+    printf("thread start\n");
+    doFileBuff(fileDeq,"1.txt",&writeToFile,"Thread one");
+    freeFileBuff(fileDeq,"1.txt");
+    int res = 20;
+    pthread_exit(&res);
+}
 
-void *BusyWork(void *t)
-{
-    srand((unsigned int)time(NULL));
-    int i;
-    long tid;
-    double *result=malloc(sizeof(double));
-    tid = (long)t;
-    printf("Thread %ld starting...\n",tid);
-    for (i=0; i<rand(); i++)
-    {
-        *result = *result + sin(i) * tan(i);
-    }
-    printf("Thread %ld done. Result = %e\n",tid,result);
-    pthread_exit((void*)result);
-}
-void *threadFunction()
-{
-    //init
-    //decide to read
-}
 int main (int argc, char *argv[])
 {
-    Deq* dequeue = initializeDequeue();
-    for (int i = 0; i < 10; ++i)
-    {
-        char str[10];
-        sprintf(str, "%d", rand());
-        FileBuff* buff = initializeFileBuff(str);
-        addNode(dequeue,buff);
-    }
-    printDequeue(dequeue);
-    pop(dequeue);
-    pop(dequeue);
-    pop(dequeue);
-    printDequeue(dequeue);
+    FileDeq *deq = initializeFileDequeue(SIZE_OF_BUFF);
+
+    pthread_t thread[NUM_THREADS];
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    pthread_create(&thread[1], &attr, threadFunction, NULL);
+    pthread_attr_destroy(&attr);
+    printf("main\n");
+    void **a;
+    int res = pthread_join(thread[1], a);
+    printf("main\n");
+    pthread_exit(NULL);
+}
+//    Deq* dequeue = initializeDequeue();
+//    for (int i = 0; i < 10; ++i)
+//    {
+//        char str[10];
+//        sprintf(str, "%d", rand());
+//        FileBuff* buff = initializeFileBuff(str);
+//        addNode(dequeue,buff);
+//    }
+//    printDequeue(dequeue);
+//    pop(dequeue);
+//    pop(dequeue);
+//    pop(dequeue);
+//    printDequeue(dequeue);
 //    long timeOne = (unsigned long)time(NULL);
 //    sleep(2);
 //    long timeTwo = (unsigned long)time(NULL);
 //    printf("Has past %f",difftime(timeOne,timeTwo
 //    ));
-
-}
 //
 //    pthread_t thread[NUM_THREADS];
 //    pthread_attr_t attr;

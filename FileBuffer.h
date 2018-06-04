@@ -7,11 +7,12 @@
 #include <stdlib.h>
 #ifndef PRACTICE_FILEBUFFER_H
 #define PRACTICE_FILEBUFFER_H
+#define ACTION_REMOVE 0
+#define ACTION_ASCEND 1
 typedef struct FileBufferStructure FileBuff;
 typedef struct FileDequeue FileDeq;
 typedef struct DequeueNode DeqNode;
 typedef struct Dequeue Deq;
-
 
 struct FileBufferStructure
 {
@@ -39,10 +40,13 @@ struct Dequeue
 };
 FileBuff* initializeFileBuff(char *path)
 {
+    printf("creation 2 0\n");
     FileBuff *buff = (FileBuff*)malloc(sizeof(FileBuff));
+    printf("creation 2 1\n");
     buff->path = (char*)malloc(sizeof(path));
+    printf("creation 2 2\n");
     strcpy(buff->path,path);
-    buff->filePtr = NULL;
+    buff->filePtr = fopen(path,"a+");
     pthread_mutex_init(&buff->lock,NULL);
     return buff;
 }
@@ -98,13 +102,19 @@ FileDeq *initializeFileDequeue(int sizeOfBuff)
     pthread_mutex_init(&fileDeq->lock,NULL);
     return fileDeq;
 }
-void toTop(Deq* dequeue, DeqNode *temp)
+void ascendNode(Deq* dequeue, DeqNode *temp)
 {
     temp->prev->next = temp->next;
     temp->next->prev = temp->prev;
     addNode(dequeue,temp->buff);
 }
-FileBuff *getByPath(Deq *dequeue,char *path)
+void removeNode(DeqNode *temp)
+{
+    temp->next->prev = temp->prev;
+    temp->prev->next = temp->next;
+    free(temp);
+}
+FileBuff *actionByPath(Deq *dequeue,char *path,int action)
 {
     DeqNode *temp = dequeue->head;
     while(temp->next != dequeue->tail)
@@ -112,48 +122,63 @@ FileBuff *getByPath(Deq *dequeue,char *path)
         temp = temp->next;
         if(strcmp(temp->buff->path,path) == 0)
         {
+            (action)?ascendNode(dequeue,temp):removeNode(temp);
             return temp->buff;
         }
     }
     return NULL;
 }
 
-void freeFileBuff(FileBuff  *buff)
+void freeFileBuff(FileDeq *fileDeq, char *path)
 {
-    buff->path = "";
+    printf("destruction");
+    pthread_mutex_lock(&fileDeq->lock);
+    FileBuff *buff = actionByPath(fileDeq->dequeue,path,ACTION_REMOVE);
     fclose(buff->filePtr);
-}
-void allocFileBuff(FileBuff *buff, char *path)
-{
-    buff->filePtr = fopen(path,"a+");
+    pthread_mutex_destroy(&buff->lock);
+    free(buff->path);
+    fileDeq->numberOfFiles--;
+    pthread_mutex_unlock(&fileDeq->lock);
 }
 void doFileBuff(FileDeq *fileDeq,char *path, void (*functionPtr)(FileBuff *,void*),void *arg)
 {
-    FileBuff *result;
+    printf("doFileBuff: 1\n");
+    FileBuff *buff;
     pthread_mutex_lock(&fileDeq->lock);
-    FileBuff *temp = getByPath(fileDeq->dequeue,path);
-    if(temp != NULL)
+    printf("doFileBuff: 2\n");
+    if(fileDeq->numberOfFiles == fileDeq->sizeOfBuff)
     {
-        pthread_mutex_lock(&temp->lock);
-        pthread_mutex_unlock(&fileDeq->lock);
-        (*functionPtr)(temp,arg);
-        pthread_mutex_unlock(&temp->lock);
+        buff = actionByPath(fileDeq->dequeue, path,ACTION_ASCEND);
+        if (buff != NULL) {
+            pthread_mutex_lock(&buff->lock);
+            pthread_mutex_unlock(&fileDeq->lock);
+            (*functionPtr)(buff, arg);
+            pthread_mutex_unlock(&buff->lock);
+        } else {
+            buff = pop(fileDeq->dequeue);
+            pthread_mutex_lock(&buff->lock);
+            freeFileBuff(fileDeq,path);
+            pthread_mutex_unlock(&buff->lock);
+            free(buff);
+            buff = initializeFileBuff(path);
+            pthread_mutex_lock(&buff->lock);
+            addNode(fileDeq->dequeue,buff);
+            pthread_mutex_unlock(&fileDeq->lock);
+            (*functionPtr)(buff, arg);
+            pthread_mutex_unlock(&buff->lock);
+        }
     }
     else
     {
-        FileBuff *lastBuff = pop(fileDeq->dequeue);
-        pthread_mutex_lock(&lastBuff->lock);
+        printf("creation 1\n");
+        pthread_mutex_lock(&fileDeq->lock);
+        buff = initializeFileBuff(path);
+        printf("creation 3\n");
+        addNode(fileDeq->dequeue,buff);
+        (*functionPtr)(buff, arg);
+        fileDeq->numberOfFiles++;
         pthread_mutex_unlock(&fileDeq->lock);
-        freeFileBuff(lastBuff);
-        allocFileBuff(lastBuff,path);
-        (*functionPtr)(lastBuff,arg);
-        pthread_mutex_unlock(&lastBuff->lock);
     }
-    //TODO: FileBuff creation
 
-}
-void writeToFile(FileBuff *fileBuff,void *arg)
-{
-    fprintf(fileBuff->filePtr,"New text %s\n",(char*)arg);
 }
 #endif //PRACTICE_FILEBUFFER_H
